@@ -1,0 +1,5 @@
+def transform_partner(raw_value):
+    # 1. Trim y limpieza básica
+    # 2. Normalización a mayúsculas
+    # 3. Reemplazo de espacios por underscores
+    # 4. Eliminación de caracteres especiales

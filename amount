@@ -1,0 +1,5 @@
+def transform_amount(raw_value, currency):
+    # 1. Conversión a float
+    # 2. Aplicación de tipo de cambio si es necesario
+    # 3. Redondeo a 2 decimales
+    # 4. Validación de rangos

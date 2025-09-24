@@ -1,0 +1,7 @@
+{
+    "date": "YYYY-MM-DD",
+    "partner": "STRING_NORMALIZED", 
+    "amount": 123.45,
+    "original_source": str,     # Trazabilidad
+    "quality_score": float      # Métrica calidad
+}

@@ -1,65 +1,118 @@
-import streamlit as st
+"""
+Aplicación Streamlit para el laboratorio de arquitectura de datos.
+
+Permite:
+- Subir múltiples CSV.
+- Normalizar columnas a esquema canónico (date, partner, amount).
+- Añadir metadatos de linaje.
+- Validar datos básicos.
+- Derivar capa Silver (partner × mes).
+- Visualizar KPIs y gráficos.
+- Descargar resultados como CSV.
+"""
+
+import io
 import pandas as pd
-import os
+import streamlit as st
 
-def main():
-    st.set_page_config(
-        page_title="Almacén Analítico Confiable",
-        page_icon="📊",
-        layout="wide"
-    )
-    
-    st.title("📊 De CSVs heterogéneos a un almacén analítico confiable")
-    st.markdown("---")
-    
-    # Sidebar
-    st.sidebar.header("Navegación")
-    section = st.sidebar.radio(
-        "Selecciona una sección:",
-        ["🏠 Dashboard", "📈 Calidad de Datos", "🔍 Data Lineage", "📋 Documentación"]
-    )
-    
-    if section == "🏠 Dashboard":
-        show_dashboard()
-    elif section == "📈 Calidad de Datos":
-        show_data_quality()
-    elif section == "🔍 Data Lineage":
-        show_data_lineage()
-    elif section == "📋 Documentación":
-        show_documentation()
+from src.transform import normalize_columns, to_silver
+from src.validate import basic_checks
+from src.ingest import tag_lineage, concat_bronze
 
-def show_dashboard():
-    st.header("Dashboard Principal")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("Archivos Procesados", "0")
-    
-    with col2:
-        st.metric("Tasa de Calidad", "0%")
-    
-    with col3:
-        st.metric("KPIs Calculados", "0")
-    
-    st.info("🚧 Dashboard en construcción - Implementa las métricas reales aquí")
 
-def show_data_quality():
-    st.header("Calidad de Datos")
-    st.warning("Implementa los reportes de calidad de datos aquí")
+# -------------------
+# Configuración básica
+# -------------------
+st.set_page_config(page_title="Data Lab", layout="wide")
+st.title("🗂️ Laboratorio de Datos")
 
-def show_data_lineage():
-    st.header("Data Lineage")
-    st.info("Aquí se mostrará el trazado de los datos a través del pipeline")
 
-def show_documentation():
-    st.header("Documentación del Proyecto")
-    st.markdown("""
-    ### Estructura del Proyecto
-    - **data/raw**: Datos crudos originales
-    - **data/bronze**: Datos validados mínimamente
-    - **data/silver**: Datos limpios y estandarizados
-    - **data/gold**: Datos enriquecidos para análisis
-    """)
+# -------------------
+# Barra lateral
+# -------------------
+st.sidebar.header("Configuración de columnas origen")
+col_date = st.sidebar.text_input("Columna de fecha (origen)", "date")
+col_partner = st.sidebar.text_input("Columna de partner (origen)", "partner")
+col_amount = st.sidebar.text_input("Columna de monto (origen)", "amount")
 
-if __name__ == "__main__":
-    main()
+mapping = {
+    col_date: "date",
+    col_partner: "partner",
+    col_amount: "amount",
+}
+
+uploaded_files = st.file_uploader(
+    "Sube uno o más archivos CSV",
+    type=["csv"],
+    accept_multiple_files=True,
+)
+
+
+# -------------------
+# Procesamiento
+# -------------------
+bronze_frames = []
+
+if uploaded_files:
+    for file in uploaded_files:
+        try:
+            df = pd.read_csv(file, encoding="utf-8")
+        except UnicodeDecodeError:
+            df = pd.read_csv(file, encoding="latin-1")
+
+        # Normalizar columnas y añadir linaje
+        df_norm = normalize_columns(df, mapping)
+        df_tagged = tag_lineage(df_norm, source_name=file.name)
+        bronze_frames.append(df_tagged)
+
+    # Concatenar resultados
+    bronze = concat_bronze(bronze_frames)
+
+    st.subheader("Bronze (unificado)")
+    st.dataframe(bronze.head(50))
+
+    # Validaciones
+    errors = basic_checks(bronze)
+    if errors:
+        st.error("❌ Se encontraron problemas en los datos:")
+        for e in errors:
+            st.write(f"- {e}")
+    else:
+        st.success("✅ Validaciones básicas superadas")
+
+        # Derivar Silver
+        silver = to_silver(bronze)
+
+        st.subheader("Silver (partner × mes)")
+        st.dataframe(silver.head(50))
+
+        # KPIs simples
+        total_amount = silver["total_amount"].sum()
+        n_partners = silver["partner"].nunique()
+        n_months = silver["month"].nunique()
+
+        kpi1, kpi2, kpi3 = st.columns(3)
+        kpi1.metric("Monto total (EUR)", f"{total_amount:,.2f}")
+        kpi2.metric("Partners únicos", str(n_partners))
+        kpi3.metric("Meses cubiertos", str(n_months))
+
+        # Gráfico
+        st.bar_chart(silver.set_index("month")["total_amount"])
+
+        # Descargas
+        st.subheader("Descargar resultados")
+        bronze_csv = bronze.to_csv(index=False).encode("utf-8")
+        silver_csv = silver.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            "⬇️ Descargar Bronze CSV",
+            data=bronze_csv,
+            file_name="bronze.csv",
+            mime="text/csv",
+        )
+        st.download_button(
+            "⬇️ Descargar Silver CSV",
+            data=silver_csv,
+            file_name="silver.csv",
+            mime="text/csv",
+        )

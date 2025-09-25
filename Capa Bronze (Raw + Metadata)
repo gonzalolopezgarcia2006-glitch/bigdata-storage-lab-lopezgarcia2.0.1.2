@@ -1,6 +1,0 @@
-{
-    "raw_data": dict,           # Datos originales
-    "source_file": str,         # Nombre archivo origen
-    "ingestion_timestamp": str, # Fecha-hora ingesta
-    "schema_version": str       # Versión esquema detectado
-}
